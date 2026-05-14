@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Comparador Goblin Hero - Magic</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f7f5;
+      margin: 0;
+      padding: 20px;
+      color: #1d1d1d;
+    }
+
+    h1 {
+      text-align: center;
+      color: #0f5132;
+    }
+
+    textarea {
+      width: 100%;
+      height: 260px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      font-size: 15px;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+
+    button {
+      background: #198754;
+      color: white;
+      border: none;
+      padding: 12px 18px;
+      margin: 10px 5px 10px 0;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #146c43;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 15px;
+      margin-top: 15px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+    }
+
+    .found {
+      border-left: 6px solid #198754;
+    }
+
+    .not-found {
+      border-left: 6px solid #dc3545;
+    }
+
+    .manual {
+      border-left: 6px solid #ffc107;
+    }
+
+    .status {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+
+    .green {
+      color: #198754;
+    }
+
+    .red {
+      color: #dc3545;
+    }
+
+    .yellow {
+      color: #b78103;
+    }
+
+    .small {
+      font-size: 13px;
+      color: #666;
+    }
+
+    .summary {
+      background: #e9f7ef;
+      border-radius: 10px;
+      padding: 15px;
+      margin: 15px 0;
+      font-weight: bold;
+    }
+
+    a {
+      color: #0d6efd;
+      text-decoration: none;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Comparador Goblin Hero Store - Magic</h1>
+
+  <p>Cole sua lista abaixo:</p>
+
+  <textarea id="deckInput">Deck
+1 Desolate Mire
+1 Choked Estuary
+1 Glacial Fortress
+1 Shineshadow Snarl
+1 Fetid Heath
+1 Bojuka Bog
+1 Contaminated Landscape
+1 Arcane Sanctum
+1 Skycloud Expanse
+1 Restoration Magic
+1 Sigil of Sleep
+1 Sejiri Shelter
+1 Baral, Chief of Compliance
+1 Exsanguinate
+1 Baleful Strix
+1 Long River's Pull
+1 Mai, Scornful Striker
+1 Papalymo Totolymo
+1 Narset's Reversal
+1 Arcane Signet
+1 Talisman of Dominance
+1 Talisman of Hierarchy
+1 Talisman of Progress
+1 Steel of the Godhead
+1 Absorb
+1 Alisaie Leveilleur
+1 Archmage's Charm
+1 Bender's Waterskin
+1 As Foretold
+1 Disallow
+1 Unwind
+1 Survival Cache
+1 Perplex
+1 Eye of Nidhogg
+1 G'raha Tia, Scion Reborn
+1 Ghostly Prison
+1 Propaganda
+1 Timely Ward
+1 Windfall
+1 Vindicate
+1 Alphinaud Leveilleur
+1 Chameleon, Master of Disguise
+1 Circle of Power
+1 Dancer's Chakrams
+1 Crushing Disappointment
+1 Syphon Mind
+1 Helm of the Ghastlord
+1 Emet-Selch of the Third Seat
+1 Y'shtola, Night's Blessed
+1 Fandaniel, Telophoroi Ascian
+1 Cleansing Nova
+1 Starfall Invocation
+1 Sublime Epiphany</textarea>
+
+  <br>
+
+  <button onclick="compararCartas()">Buscar no site da Goblin Hero</button>
+  <button onclick="copiarEncontradas()">Copiar cartas encontradas</button>
+  <button onclick="limparResultado()">Limpar resultado</button>
+
+  <div id="summary"></div>
+  <div id="results"></div>
+
+  <script>
+    const BASE_SITE = "https://www.goblinherostore.com.br/?view=ecom/itens&tcg=1";
+
+    let cartasEncontradas = [];
+
+    function normalizarTexto(texto) {
+      return texto
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[’']/g, "")
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function parseDeck(texto) {
+      const linhas = texto.split("\n");
+      const cartas = [];
+
+      for (let linha of linhas) {
+        linha = linha.trim();
+
+        if (!linha || linha.toLowerCase() === "deck") continue;
+
+        const match = linha.match(/^(\d+)\s+(.+)$/);
+
+        if (match) {
+          cartas.push({
+            quantidadeDesejada: parseInt(match[1]),
+            nome: match[2].trim()
+          });
+        }
+      }
+
+      return cartas;
+    }
+
+    function montarUrlsBusca(nomeCarta) {
+      const encoded = encodeURIComponent(nomeCarta);
+
+      return [
+        `${BASE_SITE}&buscar=${encoded}`,
+        `${BASE_SITE}&busca=${encoded}`,
+        `${BASE_SITE}&search=${encoded}`,
+        `${BASE_SITE}&q=${encoded}`,
+        `${BASE_SITE}&nome=${encoded}`,
+        `${BASE_SITE}&produto=${encoded}`
+      ];
+    }
+
+    function montarUrlManual(nomeCarta) {
+      return `${BASE_SITE}&busca=${encodeURIComponent(nomeCarta)}`;
+    }
+
+    async function fetchComProxy(url) {
+      const proxies = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+        `https://r.jina.ai/http://r.jina.ai/http://${url.replace(/^https?:\/\//, "")}`
+      ];
+
+      for (const proxy of proxies) {
+        try {
+          const response = await fetch(proxy);
+
+          if (!response.ok) continue;
+
+          const text = await response.text();
+
+          if (text && text.length > 100) {
+            return text;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      return null;
+    }
+
+    function extrairPreco(html) {
+      const texto = html.replace(/\s+/g, " ");
+
+      const regexPreco = /(R\$ ?\d{1,3}(?:\.\d{3})*,\d{2})/i;
+      const match = texto.match(regexPreco);
+
+      return match ? match[1] : "Preço não identificado";
+    }
+
+    function extrairQuantidade(html) {
+      const texto = normalizarTexto(html);
+
+      const padroes = [
+        /quantidade\s*[:\-]?\s*(\d+)/i,
+        /estoque\s*[:\-]?\s*(\d+)/i,
+        /disponivel\s*[:\-]?\s*(\d+)/i,
+        /(\d+)\s*unidades/i,
+        /(\d+)\s*unidade/i
+      ];
+
+      for (const padrao of padroes) {
+        const match = texto.match(padrao);
+        if (match) return parseInt(match[1]);
+      }
+
+      return null;
+    }
+
+    function contemMensagemSemResultado(html) {
+      const texto = normalizarTexto(html);
+
+      const frases = [
+        "nenhum produto encontrado",
+        "nenhum resultado encontrado",
+        "produto nao encontrado",
+        "nao encontramos",
+        "sem resultado",
+        "0 produtos"
+      ];
+
+      return frases.some(frase => texto.includes(frase));
+    }
+
+    async function buscarCarta(carta) {
+      const nomeNormalizado = normalizarTexto(carta.nome);
+      const urls = montarUrlsBusca(carta.nome);
+
+      for (const url of urls) {
+        const html = await fetchComProxy(url);
+
+        if (!html) continue;
+
+        const htmlNormalizado = normalizarTexto(html);
+
+        const encontrouNome = htmlNormalizado.includes(nomeNormalizado);
+        const semResultado = contemMensagemSemResultado(html);
+
+        if (encontrouNome && !semResultado) {
+          const quantidadeSite = extrairQuantidade(html);
+          const preco = extrairPreco(html);
+
+          return {
+            status: "encontrada",
+            nome: carta.nome,
+            quantidadeDesejada: carta.quantidadeDesejada,
+            quantidadeSite: quantidadeSite || "Não identificada",
+            faltam: quantidadeSite ? Math.max(carta.quantidadeDesejada - quantidadeSite, 0) : "Não identificado",
+            preco,
+            url
+          };
+        }
+      }
+
+      return {
+        status: "manual",
+        nome: carta.nome,
+        quantidadeDesejada: carta.quantidadeDesejada,
+        quantidadeSite: "Não confirmado",
+        faltam: "Não confirmado",
+        preco: "Não confirmado",
+        url: montarUrlManual(carta.nome)
+      };
+    }
+
+    async function compararCartas() {
+      const input = document.getElementById("deckInput").value;
+      const results = document.getElementById("results");
+      const summary = document.getElementById("summary");
+
+      results.innerHTML = "";
+      summary.innerHTML = "";
+      cartasEncontradas = [];
+
+      const cartas = parseDeck(input);
+
+      if (cartas.length === 0) {
+        alert("Cole uma lista válida no formato: 1 Nome da Carta");
+        return;
+      }
+
+      summary.innerHTML = `
+        <div class="summary">
+          Buscando ${cartas.length} cartas no site da Goblin Hero Store...
+        </div>
+      `;
+
+      let encontradas = 0;
+      let verificarManual = 0;
+
+      for (let i = 0; i < cartas.length; i++) {
+        const carta = cartas[i];
+
+        summary.innerHTML = `
+          <div class="summary">
+            Buscando ${i + 1} de ${cartas.length}: ${carta.nome}
+          </div>
+        `;
+
+        const resultado = await buscarCarta(carta);
+
+        if (resultado.status === "encontrada") {
+          encontradas++;
+          cartasEncontradas.push(resultado);
+          renderResultado(resultado, "found");
+        } else {
+          verificarManual++;
+          renderResultado(resultado, "manual");
+        }
+
+        await esperar(350);
+      }
+
+      summary.innerHTML = `
+        <div class="summary">
+          Resultado: ${encontradas} encontradas automaticamente | ${verificarManual} precisam de verificação manual
+        </div>
+      `;
+    }
+
+    function renderResultado(resultado, classe) {
+      const results = document.getElementById("results");
+
+      let statusHtml = "";
+
+      if (resultado.status === "encontrada") {
+        statusHtml = `<div class="status green">Encontrada automaticamente</div>`;
+      } else {
+        statusHtml = `<div class="status yellow">Não consegui confirmar automaticamente</div>`;
+      }
+
+      const html = `
+        <div class="card ${classe}">
+          ${statusHtml}
+          <strong>${resultado.nome}</strong><br>
+          Desejado: ${resultado.quantidadeDesejada}<br>
+          Quantidade no site: ${resultado.quantidadeSite}<br>
+          Faltam: ${resultado.faltam}<br>
+          Preço: ${resultado.preco}<br>
+          <br>
+          <a href="${resultado.url}" target="_blank">Abrir busca no site</a>
+          <div class="small">Caso o site bloqueie a leitura automática, confira manualmente por este link.</div>
+        </div>
+      `;
+
+      results.insertAdjacentHTML("beforeend", html);
+    }
+
+    function copiarEncontradas() {
+      if (cartasEncontradas.length === 0) {
+        alert("Nenhuma carta encontrada automaticamente ainda.");
+        return;
+      }
+
+      const texto = cartasEncontradas.map(carta => {
+        return `${carta.quantidadeDesejada} ${carta.nome} | Site: ${carta.quantidadeSite} | ${carta.preco}`;
+      }).join("\n");
+
+      navigator.clipboard.writeText(texto).then(() => {
+        alert("Lista copiada!");
+      });
+    }
+
+    function limparResultado() {
+      document.getElementById("results").innerHTML = "";
+      document.getElementById("summary").innerHTML = "";
+      cartasEncontradas = [];
+    }
+
+    function esperar(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+  </script>
+
+</body>
+</html>
