@@ -51,40 +51,13 @@
       padding: 15px;
       margin-top: 15px;
       box-shadow: 0 3px 10px rgba(0,0,0,0.08);
-    }
-
-    .found {
       border-left: 6px solid #198754;
-    }
-
-    .not-found {
-      border-left: 6px solid #dc3545;
-    }
-
-    .manual {
-      border-left: 6px solid #ffc107;
     }
 
     .status {
       font-weight: bold;
-      margin-bottom: 5px;
-    }
-
-    .green {
       color: #198754;
-    }
-
-    .red {
-      color: #dc3545;
-    }
-
-    .yellow {
-      color: #b78103;
-    }
-
-    .small {
-      font-size: 13px;
-      color: #666;
+      margin-bottom: 5px;
     }
 
     .summary {
@@ -92,6 +65,15 @@
       border-radius: 10px;
       padding: 15px;
       margin: 15px 0;
+      font-weight: bold;
+    }
+
+    .empty {
+      background: #fff3cd;
+      border-radius: 10px;
+      padding: 15px;
+      margin-top: 15px;
+      color: #856404;
       font-weight: bold;
     }
 
@@ -105,7 +87,7 @@
 
 <body>
 
-  <h1>Comparador Goblin Hero Store - Magic</h1>
+  <h1>Cartas em Estoque - Goblin Hero Store</h1>
 
   <p>Cole sua lista abaixo:</p>
 
@@ -166,8 +148,8 @@
 
   <br>
 
-  <button onclick="compararCartas()">Buscar no site da Goblin Hero</button>
-  <button onclick="copiarEncontradas()">Copiar cartas encontradas</button>
+  <button onclick="compararCartas()">Buscar somente cartas em estoque</button>
+  <button onclick="copiarEncontradas()">Copiar cartas em estoque</button>
   <button onclick="limparResultado()">Limpar resultado</button>
 
   <div id="summary"></div>
@@ -190,25 +172,20 @@
     }
 
     function parseDeck(texto) {
-      const linhas = texto.split("\n");
-      const cartas = [];
+      return texto
+        .split("\n")
+        .map(linha => linha.trim())
+        .filter(linha => linha && linha.toLowerCase() !== "deck")
+        .map(linha => {
+          const match = linha.match(/^(\d+)\s+(.+)$/);
+          if (!match) return null;
 
-      for (let linha of linhas) {
-        linha = linha.trim();
-
-        if (!linha || linha.toLowerCase() === "deck") continue;
-
-        const match = linha.match(/^(\d+)\s+(.+)$/);
-
-        if (match) {
-          cartas.push({
+          return {
             quantidadeDesejada: parseInt(match[1]),
             nome: match[2].trim()
-          });
-        }
-      }
-
-      return cartas;
+          };
+        })
+        .filter(Boolean);
     }
 
     function montarUrlsBusca(nomeCarta) {
@@ -231,7 +208,7 @@
     async function fetchComProxy(url) {
       const proxies = [
         `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-        `https://r.jina.ai/http://r.jina.ai/http://${url.replace(/^https?:\/\//, "")}`
+        `https://corsproxy.io/?${encodeURIComponent(url)}`
       ];
 
       for (const proxy of proxies) {
@@ -253,34 +230,6 @@
       return null;
     }
 
-    function extrairPreco(html) {
-      const texto = html.replace(/\s+/g, " ");
-
-      const regexPreco = /(R\$ ?\d{1,3}(?:\.\d{3})*,\d{2})/i;
-      const match = texto.match(regexPreco);
-
-      return match ? match[1] : "Preço não identificado";
-    }
-
-    function extrairQuantidade(html) {
-      const texto = normalizarTexto(html);
-
-      const padroes = [
-        /quantidade\s*[:\-]?\s*(\d+)/i,
-        /estoque\s*[:\-]?\s*(\d+)/i,
-        /disponivel\s*[:\-]?\s*(\d+)/i,
-        /(\d+)\s*unidades/i,
-        /(\d+)\s*unidade/i
-      ];
-
-      for (const padrao of padroes) {
-        const match = texto.match(padrao);
-        if (match) return parseInt(match[1]);
-      }
-
-      return null;
-    }
-
     function contemMensagemSemResultado(html) {
       const texto = normalizarTexto(html);
 
@@ -290,10 +239,52 @@
         "produto nao encontrado",
         "nao encontramos",
         "sem resultado",
-        "0 produtos"
+        "0 produtos",
+        "produto indisponivel",
+        "indisponivel",
+        "fora de estoque",
+        "sem estoque",
+        "esgotado"
       ];
 
       return frases.some(frase => texto.includes(frase));
+    }
+
+    function extrairPreco(html) {
+      const texto = html.replace(/\s+/g, " ");
+      const match = texto.match(/R\$ ?\d{1,3}(?:\.\d{3})*,\d{2}/i);
+      return match ? match[0] : "Preço não identificado";
+    }
+
+    function extrairQuantidade(html) {
+      const textoOriginal = html.replace(/\s+/g, " ");
+      const texto = normalizarTexto(html);
+
+      const padroes = [
+        /quantidade\s*[:\-]?\s*(\d+)/i,
+        /estoque\s*[:\-]?\s*(\d+)/i,
+        /disponivel\s*[:\-]?\s*(\d+)/i,
+        /(\d+)\s*unidades/i,
+        /(\d+)\s*unidade/i,
+        /qtd\s*[:\-]?\s*(\d+)/i
+      ];
+
+      for (const padrao of padroes) {
+        const match = texto.match(padrao);
+        if (match) {
+          const qtd = parseInt(match[1]);
+          if (!isNaN(qtd)) return qtd;
+        }
+      }
+
+      const temComprar = texto.includes("comprar");
+      const temAdicionar = texto.includes("adicionar ao carrinho") || texto.includes("adicionar no carrinho");
+
+      if (temComprar || temAdicionar) {
+        return 1;
+      }
+
+      return 0;
     }
 
     async function buscarCarta(carta) {
@@ -310,31 +301,23 @@
         const encontrouNome = htmlNormalizado.includes(nomeNormalizado);
         const semResultado = contemMensagemSemResultado(html);
 
-        if (encontrouNome && !semResultado) {
-          const quantidadeSite = extrairQuantidade(html);
-          const preco = extrairPreco(html);
+        if (!encontrouNome || semResultado) continue;
 
+        const quantidadeSite = extrairQuantidade(html);
+
+        if (quantidadeSite > 0) {
           return {
-            status: "encontrada",
             nome: carta.nome,
             quantidadeDesejada: carta.quantidadeDesejada,
-            quantidadeSite: quantidadeSite || "Não identificada",
-            faltam: quantidadeSite ? Math.max(carta.quantidadeDesejada - quantidadeSite, 0) : "Não identificado",
-            preco,
+            quantidadeSite,
+            faltam: Math.max(carta.quantidadeDesejada - quantidadeSite, 0),
+            preco: extrairPreco(html),
             url
           };
         }
       }
 
-      return {
-        status: "manual",
-        nome: carta.nome,
-        quantidadeDesejada: carta.quantidadeDesejada,
-        quantidadeSite: "Não confirmado",
-        faltam: "Não confirmado",
-        preco: "Não confirmado",
-        url: montarUrlManual(carta.nome)
-      };
+      return null;
     }
 
     async function compararCartas() {
@@ -353,67 +336,56 @@
         return;
       }
 
-      summary.innerHTML = `
-        <div class="summary">
-          Buscando ${cartas.length} cartas no site da Goblin Hero Store...
-        </div>
-      `;
+      let verificadas = 0;
 
-      let encontradas = 0;
-      let verificarManual = 0;
-
-      for (let i = 0; i < cartas.length; i++) {
-        const carta = cartas[i];
+      for (const carta of cartas) {
+        verificadas++;
 
         summary.innerHTML = `
           <div class="summary">
-            Buscando ${i + 1} de ${cartas.length}: ${carta.nome}
+            Buscando ${verificadas} de ${cartas.length}: ${carta.nome}
           </div>
         `;
 
         const resultado = await buscarCarta(carta);
 
-        if (resultado.status === "encontrada") {
-          encontradas++;
+        if (resultado) {
           cartasEncontradas.push(resultado);
-          renderResultado(resultado, "found");
-        } else {
-          verificarManual++;
-          renderResultado(resultado, "manual");
+          renderResultado(resultado);
         }
 
-        await esperar(350);
+        await esperar(300);
+      }
+
+      if (cartasEncontradas.length === 0) {
+        results.innerHTML = `
+          <div class="empty">
+            Nenhuma carta com estoque confirmado foi encontrada automaticamente.
+            <br><br>
+            Isso pode acontecer se o site bloquear a leitura automática ou não mostrar estoque no HTML.
+          </div>
+        `;
       }
 
       summary.innerHTML = `
         <div class="summary">
-          Resultado: ${encontradas} encontradas automaticamente | ${verificarManual} precisam de verificação manual
+          Busca finalizada: ${cartasEncontradas.length} carta(s) com estoque confirmado.
         </div>
       `;
     }
 
-    function renderResultado(resultado, classe) {
+    function renderResultado(carta) {
       const results = document.getElementById("results");
 
-      let statusHtml = "";
-
-      if (resultado.status === "encontrada") {
-        statusHtml = `<div class="status green">Encontrada automaticamente</div>`;
-      } else {
-        statusHtml = `<div class="status yellow">Não consegui confirmar automaticamente</div>`;
-      }
-
       const html = `
-        <div class="card ${classe}">
-          ${statusHtml}
-          <strong>${resultado.nome}</strong><br>
-          Desejado: ${resultado.quantidadeDesejada}<br>
-          Quantidade no site: ${resultado.quantidadeSite}<br>
-          Faltam: ${resultado.faltam}<br>
-          Preço: ${resultado.preco}<br>
-          <br>
-          <a href="${resultado.url}" target="_blank">Abrir busca no site</a>
-          <div class="small">Caso o site bloqueie a leitura automática, confira manualmente por este link.</div>
+        <div class="card">
+          <div class="status">Em estoque confirmado</div>
+          <strong>${carta.nome}</strong><br>
+          Quantidade desejada: ${carta.quantidadeDesejada}<br>
+          Quantidade disponível: ${carta.quantidadeSite}<br>
+          Faltam: ${carta.faltam}<br>
+          Preço: ${carta.preco}<br><br>
+          <a href="${carta.url}" target="_blank">Abrir carta no site</a>
         </div>
       `;
 
@@ -422,16 +394,16 @@
 
     function copiarEncontradas() {
       if (cartasEncontradas.length === 0) {
-        alert("Nenhuma carta encontrada automaticamente ainda.");
+        alert("Nenhuma carta em estoque confirmada ainda.");
         return;
       }
 
       const texto = cartasEncontradas.map(carta => {
-        return `${carta.quantidadeDesejada} ${carta.nome} | Site: ${carta.quantidadeSite} | ${carta.preco}`;
+        return `${carta.quantidadeDesejada} ${carta.nome} | disponível: ${carta.quantidadeSite} | ${carta.preco}`;
       }).join("\n");
 
       navigator.clipboard.writeText(texto).then(() => {
-        alert("Lista copiada!");
+        alert("Lista de cartas em estoque copiada!");
       });
     }
 
