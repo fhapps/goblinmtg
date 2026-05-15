@@ -92,6 +92,7 @@
   <p>Cole sua lista abaixo:</p>
 
   <textarea id="deckInput">Deck
+1 A Ascensão da Onda Faminta
 1 Desolate Mire
 1 Choked Estuary
 1 Glacial Fortress
@@ -160,12 +161,17 @@
 
     let cartasEncontradas = [];
 
-    function normalizarTexto(texto) {
+    function removerAcentos(texto) {
       return texto
-        .toLowerCase()
         .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[\u0300-\u036f]/g, "");
+    }
+
+    function normalizarTexto(texto) {
+      return removerAcentos(String(texto || ""))
+        .toLowerCase()
         .replace(/[’']/g, "")
+        .replace(/&amp;/g, "e")
         .replace(/[^a-z0-9\s]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
@@ -192,11 +198,11 @@
       const encoded = encodeURIComponent(nomeCarta);
 
       return [
-        `${BASE_SITE}&nome=${encoded}`,
         `${BASE_SITE}&busca=${encoded}`,
         `${BASE_SITE}&buscar=${encoded}`,
-        `${BASE_SITE}&search=${encoded}`,
-        `${BASE_SITE}&q=${encoded}`
+        `${BASE_SITE}&nome=${encoded}`,
+        `${BASE_SITE}&q=${encoded}`,
+        `${BASE_SITE}&search=${encoded}`
       ];
     }
 
@@ -209,58 +215,49 @@
       for (const proxy of proxies) {
         try {
           const response = await fetch(proxy);
+
           if (!response.ok) continue;
 
           const text = await response.text();
-          if (text && text.length > 100) return text;
+
+          if (text && text.length > 100) {
+            return text;
+          }
         } catch (error) {}
       }
 
       return null;
     }
 
+    function htmlParaTexto(html) {
+      const div = document.createElement("div");
+      div.innerHTML = html;
+      return div.innerText || div.textContent || "";
+    }
+
+    function contemSemResultado(html) {
+      const texto = normalizarTexto(htmlParaTexto(html));
+
+      const frases = [
+        "nenhum produto encontrado",
+        "nenhum resultado encontrado",
+        "produto nao encontrado",
+        "nao encontramos",
+        "sem resultado",
+        "0 produtos encontrados"
+      ];
+
+      return frases.some(frase => texto.includes(frase));
+    }
+
     function extrairPreco(bloco) {
-      const texto = bloco.replace(/\s+/g, " ");
+      const texto = htmlParaTexto(bloco).replace(/\s+/g, " ");
       const match = texto.match(/R\$ ?\d{1,3}(?:\.\d{3})*,\d{2}/i);
       return match ? match[0] : "Preço não identificado";
     }
 
-    function temEstoqueZero(bloco) {
-      const texto = normalizarTexto(bloco);
-
-      const padroesZero = [
-        /\b0\s*unid\b/i,
-        /\b0\s*unids\b/i,
-        /\b0\s*unidade\b/i,
-        /\b0\s*unidades\b/i,
-        /\bestoque\s*0\b/i,
-        /\bquantidade\s*0\b/i,
-        /\bqtd\s*0\b/i
-      ];
-
-      const frasesSemEstoque = [
-        "sem estoque",
-        "fora de estoque",
-        "indisponivel",
-        "produto indisponivel",
-        "esgotado",
-        "avise me quando chegar",
-        "aviseme quando chegar",
-        "produto esgotado"
-      ];
-
-      if (padroesZero.some(regex => regex.test(texto))) return true;
-      if (frasesSemEstoque.some(frase => texto.includes(frase))) return true;
-
-      return false;
-    }
-
     function extrairQuantidade(bloco) {
-      const texto = normalizarTexto(bloco);
-
-      if (temEstoqueZero(bloco)) {
-        return 0;
-      }
+      const texto = normalizarTexto(htmlParaTexto(bloco));
 
       const padroes = [
         /(\d+)\s*unid\b/i,
@@ -285,46 +282,92 @@
       return 0;
     }
 
-    function contemSemResultado(html) {
-      const texto = normalizarTexto(html);
+    function temEstoqueZero(bloco) {
+      const texto = normalizarTexto(htmlParaTexto(bloco));
 
-      const frases = [
-        "nenhum produto encontrado",
-        "nenhum resultado encontrado",
-        "produto nao encontrado",
-        "nao encontramos",
-        "sem resultado",
-        "0 produtos encontrados"
+      const padroesZero = [
+        /\b0\s*unid\b/i,
+        /\b0\s*unids\b/i,
+        /\b0\s*unidade\b/i,
+        /\b0\s*unidades\b/i,
+        /\bestoque\s*0\b/i,
+        /\bquantidade\s*0\b/i,
+        /\bqtd\s*0\b/i
       ];
 
-      return frases.some(frase => texto.includes(frase));
+      const frasesSemEstoque = [
+        "sem estoque",
+        "fora de estoque",
+        "indisponivel",
+        "produto indisponivel",
+        "esgotado",
+        "produto esgotado"
+      ];
+
+      if (padroesZero.some(regex => regex.test(texto))) return true;
+      if (frasesSemEstoque.some(frase => texto.includes(frase))) return true;
+
+      return false;
     }
 
-    function pegarBlocoDaCarta(html, nomeCarta) {
-      const nomeNormalizado = normalizarTexto(nomeCarta);
-      const htmlNormalizado = normalizarTexto(html);
+    function separarPossiveisCards(html) {
+      const partes = [];
 
-      if (!htmlNormalizado.includes(nomeNormalizado)) {
+      const regexes = [
+        /<div[^>]+class=["'][^"']*(?:item|produto|product|card)[^"']*["'][\s\S]*?<\/div>/gi,
+        /<li[^>]*[\s\S]*?<\/li>/gi,
+        /<tr[^>]*[\s\S]*?<\/tr>/gi
+      ];
+
+      for (const regex of regexes) {
+        const encontrados = html.match(regex);
+        if (encontrados) partes.push(...encontrados);
+      }
+
+      if (partes.length === 0) {
+        partes.push(html);
+      }
+
+      return partes;
+    }
+
+    function nomeBate(bloco, nomeCarta) {
+      const texto = normalizarTexto(htmlParaTexto(bloco));
+      const nome = normalizarTexto(nomeCarta);
+
+      if (texto.includes(nome)) return true;
+
+      const palavras = nome.split(" ").filter(p => p.length > 2);
+      const encontradas = palavras.filter(p => texto.includes(p)).length;
+
+      return palavras.length > 0 && encontradas / palavras.length >= 0.75;
+    }
+
+    function acharCardCorreto(html, nomeCarta) {
+      const cards = separarPossiveisCards(html);
+
+      for (const card of cards) {
+        if (nomeBate(card, nomeCarta)) {
+          return card;
+        }
+      }
+
+      const textoCompleto = normalizarTexto(htmlParaTexto(html));
+      const nome = normalizarTexto(nomeCarta);
+
+      if (!textoCompleto.includes(nome)) {
         return null;
       }
 
-      const indexOriginal = normalizarTexto(html.substring(0, html.length)).indexOf(nomeNormalizado);
+      const textoOriginal = htmlParaTexto(html);
+      const textoOriginalNormalizado = normalizarTexto(textoOriginal);
+      const pos = textoOriginalNormalizado.indexOf(nome);
 
-      const posicoesPossiveis = [];
-
-      const regexTitulo = new RegExp(nomeCarta.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-      const matchOriginal = html.match(regexTitulo);
-
-      if (matchOriginal && typeof matchOriginal.index === "number") {
-        posicoesPossiveis.push(matchOriginal.index);
+      if (pos === -1) {
+        return html;
       }
 
-      const posicao = posicoesPossiveis.length ? posicoesPossiveis[0] : indexOriginal;
-
-      const inicio = Math.max(0, posicao - 1500);
-      const fim = Math.min(html.length, posicao + 2500);
-
-      return html.substring(inicio, fim);
+      return html;
     }
 
     async function buscarCarta(carta) {
@@ -336,26 +379,23 @@
         if (!html) continue;
         if (contemSemResultado(html)) continue;
 
-        const bloco = pegarBlocoDaCarta(html, carta.nome);
+        const card = acharCardCorreto(html, carta.nome);
 
-        if (!bloco) continue;
+        if (!card) continue;
 
-        if (temEstoqueZero(bloco)) {
-          continue;
-        }
+        const quantidade = extrairQuantidade(card);
 
-        const quantidade = extrairQuantidade(bloco);
+        if (quantidade <= 0) continue;
+        if (temEstoqueZero(card)) continue;
 
-        if (quantidade > 0) {
-          return {
-            nome: carta.nome,
-            quantidadeDesejada: carta.quantidadeDesejada,
-            quantidadeSite: quantidade,
-            faltam: Math.max(carta.quantidadeDesejada - quantidade, 0),
-            preco: extrairPreco(bloco),
-            url
-          };
-        }
+        return {
+          nome: carta.nome,
+          quantidadeDesejada: carta.quantidadeDesejada,
+          quantidadeSite: quantidade,
+          faltam: Math.max(carta.quantidadeDesejada - quantidade, 0),
+          preco: extrairPreco(card),
+          url
+        };
       }
 
       return null;
