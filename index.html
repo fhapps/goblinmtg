@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Comparador Goblin Hero - Magic</title>
+  <title>Cartas em Estoque - Goblin Hero</title>
 
   <style>
     body {
@@ -45,6 +45,14 @@
       background: #146c43;
     }
 
+    .summary {
+      background: #e9f7ef;
+      border-radius: 10px;
+      padding: 15px;
+      margin: 15px 0;
+      font-weight: bold;
+    }
+
     .card {
       background: white;
       border-radius: 12px;
@@ -57,23 +65,15 @@
     .status {
       font-weight: bold;
       color: #198754;
-      margin-bottom: 5px;
-    }
-
-    .summary {
-      background: #e9f7ef;
-      border-radius: 10px;
-      padding: 15px;
-      margin: 15px 0;
-      font-weight: bold;
+      margin-bottom: 6px;
     }
 
     .empty {
       background: #fff3cd;
+      color: #856404;
       border-radius: 10px;
       padding: 15px;
       margin-top: 15px;
-      color: #856404;
       font-weight: bold;
     }
 
@@ -87,7 +87,7 @@
 
 <body>
 
-  <h1>Cartas em Estoque - Goblin Hero Store</h1>
+  <h1>Cartas em Estoque - Goblin Hero</h1>
 
   <p>Cole sua lista abaixo:</p>
 
@@ -148,9 +148,9 @@
 
   <br>
 
-  <button onclick="compararCartas()">Buscar somente cartas em estoque</button>
-  <button onclick="copiarEncontradas()">Copiar cartas em estoque</button>
-  <button onclick="limparResultado()">Limpar resultado</button>
+  <button onclick="compararCartas()">Buscar somente com estoque</button>
+  <button onclick="copiarEncontradas()">Copiar encontradas</button>
+  <button onclick="limparResultado()">Limpar</button>
 
   <div id="summary"></div>
   <div id="results"></div>
@@ -181,7 +181,7 @@
           if (!match) return null;
 
           return {
-            quantidadeDesejada: parseInt(match[1]),
+            quantidadeDesejada: Number(match[1]),
             nome: match[2].trim()
           };
         })
@@ -192,17 +192,12 @@
       const encoded = encodeURIComponent(nomeCarta);
 
       return [
-        `${BASE_SITE}&buscar=${encoded}`,
-        `${BASE_SITE}&busca=${encoded}`,
-        `${BASE_SITE}&search=${encoded}`,
-        `${BASE_SITE}&q=${encoded}`,
         `${BASE_SITE}&nome=${encoded}`,
-        `${BASE_SITE}&produto=${encoded}`
+        `${BASE_SITE}&busca=${encoded}`,
+        `${BASE_SITE}&buscar=${encoded}`,
+        `${BASE_SITE}&search=${encoded}`,
+        `${BASE_SITE}&q=${encoded}`
       ];
-    }
-
-    function montarUrlManual(nomeCarta) {
-      return `${BASE_SITE}&busca=${encodeURIComponent(nomeCarta)}`;
     }
 
     async function fetchComProxy(url) {
@@ -214,23 +209,83 @@
       for (const proxy of proxies) {
         try {
           const response = await fetch(proxy);
-
           if (!response.ok) continue;
 
           const text = await response.text();
-
-          if (text && text.length > 100) {
-            return text;
-          }
-        } catch (e) {
-          continue;
-        }
+          if (text && text.length > 100) return text;
+        } catch (error) {}
       }
 
       return null;
     }
 
-    function contemMensagemSemResultado(html) {
+    function extrairPreco(bloco) {
+      const texto = bloco.replace(/\s+/g, " ");
+      const match = texto.match(/R\$ ?\d{1,3}(?:\.\d{3})*,\d{2}/i);
+      return match ? match[0] : "Preço não identificado";
+    }
+
+    function temEstoqueZero(bloco) {
+      const texto = normalizarTexto(bloco);
+
+      const padroesZero = [
+        /\b0\s*unid\b/i,
+        /\b0\s*unids\b/i,
+        /\b0\s*unidade\b/i,
+        /\b0\s*unidades\b/i,
+        /\bestoque\s*0\b/i,
+        /\bquantidade\s*0\b/i,
+        /\bqtd\s*0\b/i
+      ];
+
+      const frasesSemEstoque = [
+        "sem estoque",
+        "fora de estoque",
+        "indisponivel",
+        "produto indisponivel",
+        "esgotado",
+        "avise me quando chegar",
+        "aviseme quando chegar",
+        "produto esgotado"
+      ];
+
+      if (padroesZero.some(regex => regex.test(texto))) return true;
+      if (frasesSemEstoque.some(frase => texto.includes(frase))) return true;
+
+      return false;
+    }
+
+    function extrairQuantidade(bloco) {
+      const texto = normalizarTexto(bloco);
+
+      if (temEstoqueZero(bloco)) {
+        return 0;
+      }
+
+      const padroes = [
+        /(\d+)\s*unid\b/i,
+        /(\d+)\s*unids\b/i,
+        /(\d+)\s*unidade\b/i,
+        /(\d+)\s*unidades\b/i,
+        /estoque\s*[:\-]?\s*(\d+)/i,
+        /quantidade\s*[:\-]?\s*(\d+)/i,
+        /qtd\s*[:\-]?\s*(\d+)/i,
+        /disponivel\s*[:\-]?\s*(\d+)/i
+      ];
+
+      for (const padrao of padroes) {
+        const match = texto.match(padrao);
+
+        if (match) {
+          const qtd = Number(match[1]);
+          return isNaN(qtd) ? 0 : qtd;
+        }
+      }
+
+      return 0;
+    }
+
+    function contemSemResultado(html) {
       const texto = normalizarTexto(html);
 
       const frases = [
@@ -239,79 +294,65 @@
         "produto nao encontrado",
         "nao encontramos",
         "sem resultado",
-        "0 produtos",
-        "produto indisponivel",
-        "indisponivel",
-        "fora de estoque",
-        "sem estoque",
-        "esgotado"
+        "0 produtos encontrados"
       ];
 
       return frases.some(frase => texto.includes(frase));
     }
 
-    function extrairPreco(html) {
-      const texto = html.replace(/\s+/g, " ");
-      const match = texto.match(/R\$ ?\d{1,3}(?:\.\d{3})*,\d{2}/i);
-      return match ? match[0] : "Preço não identificado";
-    }
+    function pegarBlocoDaCarta(html, nomeCarta) {
+      const nomeNormalizado = normalizarTexto(nomeCarta);
+      const htmlNormalizado = normalizarTexto(html);
 
-    function extrairQuantidade(html) {
-      const textoOriginal = html.replace(/\s+/g, " ");
-      const texto = normalizarTexto(html);
-
-      const padroes = [
-        /quantidade\s*[:\-]?\s*(\d+)/i,
-        /estoque\s*[:\-]?\s*(\d+)/i,
-        /disponivel\s*[:\-]?\s*(\d+)/i,
-        /(\d+)\s*unidades/i,
-        /(\d+)\s*unidade/i,
-        /qtd\s*[:\-]?\s*(\d+)/i
-      ];
-
-      for (const padrao of padroes) {
-        const match = texto.match(padrao);
-        if (match) {
-          const qtd = parseInt(match[1]);
-          if (!isNaN(qtd)) return qtd;
-        }
+      if (!htmlNormalizado.includes(nomeNormalizado)) {
+        return null;
       }
 
-      const temComprar = texto.includes("comprar");
-      const temAdicionar = texto.includes("adicionar ao carrinho") || texto.includes("adicionar no carrinho");
+      const indexOriginal = normalizarTexto(html.substring(0, html.length)).indexOf(nomeNormalizado);
 
-      if (temComprar || temAdicionar) {
-        return 1;
+      const posicoesPossiveis = [];
+
+      const regexTitulo = new RegExp(nomeCarta.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      const matchOriginal = html.match(regexTitulo);
+
+      if (matchOriginal && typeof matchOriginal.index === "number") {
+        posicoesPossiveis.push(matchOriginal.index);
       }
 
-      return 0;
+      const posicao = posicoesPossiveis.length ? posicoesPossiveis[0] : indexOriginal;
+
+      const inicio = Math.max(0, posicao - 1500);
+      const fim = Math.min(html.length, posicao + 2500);
+
+      return html.substring(inicio, fim);
     }
 
     async function buscarCarta(carta) {
-      const nomeNormalizado = normalizarTexto(carta.nome);
       const urls = montarUrlsBusca(carta.nome);
 
       for (const url of urls) {
         const html = await fetchComProxy(url);
 
         if (!html) continue;
+        if (contemSemResultado(html)) continue;
 
-        const htmlNormalizado = normalizarTexto(html);
+        const bloco = pegarBlocoDaCarta(html, carta.nome);
 
-        const encontrouNome = htmlNormalizado.includes(nomeNormalizado);
-        const semResultado = contemMensagemSemResultado(html);
+        if (!bloco) continue;
 
-        if (!encontrouNome || semResultado) continue;
+        if (temEstoqueZero(bloco)) {
+          continue;
+        }
 
-        const quantidadeSite = extrairQuantidade(html);
+        const quantidade = extrairQuantidade(bloco);
 
-        if (quantidadeSite > 0) {
+        if (quantidade > 0) {
           return {
             nome: carta.nome,
             quantidadeDesejada: carta.quantidadeDesejada,
-            quantidadeSite,
-            faltam: Math.max(carta.quantidadeDesejada - quantidadeSite, 0),
-            preco: extrairPreco(html),
+            quantidadeSite: quantidade,
+            faltam: Math.max(carta.quantidadeDesejada - quantidade, 0),
+            preco: extrairPreco(bloco),
             url
           };
         }
@@ -331,19 +372,17 @@
 
       const cartas = parseDeck(input);
 
-      if (cartas.length === 0) {
+      if (!cartas.length) {
         alert("Cole uma lista válida no formato: 1 Nome da Carta");
         return;
       }
 
-      let verificadas = 0;
-
-      for (const carta of cartas) {
-        verificadas++;
+      for (let i = 0; i < cartas.length; i++) {
+        const carta = cartas[i];
 
         summary.innerHTML = `
           <div class="summary">
-            Buscando ${verificadas} de ${cartas.length}: ${carta.nome}
+            Buscando ${i + 1} de ${cartas.length}: ${carta.nome}
           </div>
         `;
 
@@ -354,24 +393,22 @@
           renderResultado(resultado);
         }
 
-        await esperar(300);
-      }
-
-      if (cartasEncontradas.length === 0) {
-        results.innerHTML = `
-          <div class="empty">
-            Nenhuma carta com estoque confirmado foi encontrada automaticamente.
-            <br><br>
-            Isso pode acontecer se o site bloquear a leitura automática ou não mostrar estoque no HTML.
-          </div>
-        `;
+        await esperar(350);
       }
 
       summary.innerHTML = `
         <div class="summary">
-          Busca finalizada: ${cartasEncontradas.length} carta(s) com estoque confirmado.
+          Busca finalizada: ${cartasEncontradas.length} carta(s) com estoque maior que zero encontradas.
         </div>
       `;
+
+      if (!cartasEncontradas.length) {
+        results.innerHTML = `
+          <div class="empty">
+            Nenhuma carta da sua lista foi confirmada com estoque maior que zero.
+          </div>
+        `;
+      }
     }
 
     function renderResultado(carta) {
@@ -385,7 +422,7 @@
           Quantidade disponível: ${carta.quantidadeSite}<br>
           Faltam: ${carta.faltam}<br>
           Preço: ${carta.preco}<br><br>
-          <a href="${carta.url}" target="_blank">Abrir carta no site</a>
+          <a href="${carta.url}" target="_blank">Abrir busca no site</a>
         </div>
       `;
 
@@ -393,8 +430,8 @@
     }
 
     function copiarEncontradas() {
-      if (cartasEncontradas.length === 0) {
-        alert("Nenhuma carta em estoque confirmada ainda.");
+      if (!cartasEncontradas.length) {
+        alert("Nenhuma carta com estoque maior que zero foi encontrada.");
         return;
       }
 
@@ -403,13 +440,13 @@
       }).join("\n");
 
       navigator.clipboard.writeText(texto).then(() => {
-        alert("Lista de cartas em estoque copiada!");
+        alert("Lista copiada!");
       });
     }
 
     function limparResultado() {
-      document.getElementById("results").innerHTML = "";
       document.getElementById("summary").innerHTML = "";
+      document.getElementById("results").innerHTML = "";
       cartasEncontradas = [];
     }
 
